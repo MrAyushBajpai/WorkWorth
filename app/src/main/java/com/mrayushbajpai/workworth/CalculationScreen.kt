@@ -29,6 +29,7 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun CalculationScreen(
     viewModel: MainViewModel,
+    onSeeAll: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -63,6 +64,7 @@ fun CalculationScreen(
             onDeleteTransaction = { viewModel.confirmDeleteTransaction(it) },
             onEditTransaction = { viewModel.startEditingTransaction(it) },
             onReset = { viewModel.resetAll() },
+            onSeeAll = onSeeAll,
             modifier = modifier
         )
     }
@@ -132,6 +134,7 @@ fun HomeScreen(
     onDeleteTransaction: (Transaction) -> Unit,
     onEditTransaction: (Transaction) -> Unit,
     onReset: () -> Unit,
+    onSeeAll: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -195,18 +198,35 @@ fun HomeScreen(
                 Text("No transactions yet. Tap + to add one!", color = Color.Gray)
             }
         } else {
+            val recentTransactions = uiState.currentMonthTransactions
+                .sortedByDescending { it.timestamp }
+                .take(5)
+
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(uiState.currentMonthTransactions.sortedByDescending { it.timestamp }, key = { it.id }) { transaction ->
+                items(recentTransactions, key = { it.id }) { transaction ->
                     TransactionCard(
                         transaction = transaction,
                         allLabels = uiState.labels,
                         onDelete = { onDeleteTransaction(transaction) },
                         onEdit = { onEditTransaction(transaction) }
                     )
+                }
+
+                item {
+                    TextButton(
+                        onClick = onSeeAll,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "See All",
+                            color = Color(0xFF008080),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }

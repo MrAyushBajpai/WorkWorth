@@ -39,6 +39,7 @@ class MainActivity : ComponentActivity() {
                 val viewModel: MainViewModel = viewModel(
                     factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                         override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                            @Suppress("UNCHECKED_CAST")
                             return MainViewModel(repository) as T
                         }
                     }
@@ -140,7 +141,16 @@ fun MainApp(viewModel: MainViewModel) {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable("home") {
-                CalculationScreen(viewModel = viewModel)
+                CalculationScreen(
+                    viewModel = viewModel,
+                    onSeeAll = {
+                        navController.navigate("history") {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
             }
             composable("labels") {
                 LabelsScreen(viewModel = viewModel)
