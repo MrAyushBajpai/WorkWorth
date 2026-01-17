@@ -40,6 +40,16 @@ fun LabelsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         Color(0xFF4CAF50), Color(0xFFFFC107), Color(0xFFFF5722)
     )
 
+    // Confirmation Dialog
+    uiState.labelToDelete?.let { label ->
+        WorkworthConfirmationDialog(
+            title = "Delete Label?",
+            message = "Deleting this label will remove it from all associated transactions. This cannot be undone.",
+            onConfirm = { viewModel.deleteLabel(label.id) },
+            onDismiss = { viewModel.dismissDeleteLabel() }
+        )
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         CenterAlignedTopAppBar(
             title = { Text("Manage Labels", fontWeight = FontWeight.Bold) }
@@ -153,7 +163,7 @@ fun LabelsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                                     IconButton(onClick = { viewModel.startEditingLabel(label) }) {
                                         Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
                                     }
-                                    IconButton(onClick = { viewModel.deleteLabel(label.id) }) {
+                                    IconButton(onClick = { viewModel.confirmDeleteLabel(label) }) {
                                         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(alpha = 0.6f))
                                     }
                                 }

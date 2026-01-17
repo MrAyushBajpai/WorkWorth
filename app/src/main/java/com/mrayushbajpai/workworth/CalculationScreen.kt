@@ -40,6 +40,16 @@ fun CalculationScreen(
         return
     }
 
+    // Confirmation Dialog
+    uiState.transactionToDelete?.let { transaction ->
+        WorkworthConfirmationDialog(
+            title = "Delete Transaction?",
+            message = "This will permanently remove this expense and update your remaining time and money.",
+            onConfirm = { viewModel.deleteTransaction(transaction.id) },
+            onDismiss = { viewModel.dismissDeleteTransaction() }
+        )
+    }
+
     if (uiState.salary <= 0.0 || uiState.daysWorked <= 0.0) {
         SetupScreen(
             onSave = { salary, days ->
@@ -50,7 +60,7 @@ fun CalculationScreen(
     } else {
         HomeScreen(
             uiState = uiState,
-            onDeleteTransaction = { viewModel.deleteTransaction(it) },
+            onDeleteTransaction = { viewModel.confirmDeleteTransaction(it) },
             onEditTransaction = { viewModel.startEditingTransaction(it) },
             onReset = { viewModel.resetAll() },
             modifier = modifier
@@ -119,7 +129,7 @@ fun SetupScreen(onSave: (Double, Double) -> Unit, modifier: Modifier = Modifier)
 @Composable
 fun HomeScreen(
     uiState: WorkWorthUiState,
-    onDeleteTransaction: (String) -> Unit,
+    onDeleteTransaction: (Transaction) -> Unit,
     onEditTransaction: (Transaction) -> Unit,
     onReset: () -> Unit,
     modifier: Modifier = Modifier
@@ -194,7 +204,7 @@ fun HomeScreen(
                     TransactionCard(
                         transaction = transaction,
                         allLabels = uiState.labels,
-                        onDelete = { onDeleteTransaction(transaction.id) },
+                        onDelete = { onDeleteTransaction(transaction) },
                         onEdit = { onEditTransaction(transaction) }
                     )
                 }

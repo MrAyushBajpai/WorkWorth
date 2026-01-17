@@ -16,7 +16,9 @@ data class WorkWorthUiState(
     val currentMonthYear: String = "",
     val isLoading: Boolean = true,
     val editingTransaction: Transaction? = null,
-    val editingLabel: Label? = null
+    val editingLabel: Label? = null,
+    val transactionToDelete: Transaction? = null,
+    val labelToDelete: Label? = null
 ) {
     val currentMonthTransactions = transactions.filter { it.monthYear == currentMonthYear }
     val totalSpent = currentMonthTransactions.sumOf { it.amount }
@@ -104,9 +106,18 @@ class MainViewModel(private val repository: WorkworthRepository) : ViewModel() {
         }
     }
 
+    fun confirmDeleteTransaction(transaction: Transaction) {
+        _uiState.update { it.copy(transactionToDelete = transaction) }
+    }
+
+    fun dismissDeleteTransaction() {
+        _uiState.update { it.copy(transactionToDelete = null) }
+    }
+
     fun deleteTransaction(transactionId: String) {
         viewModelScope.launch {
             repository.deleteTransaction(transactionId)
+            dismissDeleteTransaction()
         }
     }
 
@@ -134,9 +145,18 @@ class MainViewModel(private val repository: WorkworthRepository) : ViewModel() {
         }
     }
 
+    fun confirmDeleteLabel(label: Label) {
+        _uiState.update { it.copy(labelToDelete = label) }
+    }
+
+    fun dismissDeleteLabel() {
+        _uiState.update { it.copy(labelToDelete = null) }
+    }
+
     fun deleteLabel(labelId: String) {
         viewModelScope.launch {
             repository.deleteLabel(labelId)
+            dismissDeleteLabel()
         }
     }
 

@@ -26,6 +26,16 @@ fun HistoryScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     // Group all transactions by month
     val groupedTransactions = uiState.transactions.groupBy { it.monthYear }
 
+    // Confirmation Dialog
+    uiState.transactionToDelete?.let { transaction ->
+        WorkworthConfirmationDialog(
+            title = "Delete Transaction?",
+            message = "This will permanently remove this expense and update your remaining time and money.",
+            onConfirm = { viewModel.deleteTransaction(transaction.id) },
+            onDismiss = { viewModel.dismissDeleteTransaction() }
+        )
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         CenterAlignedTopAppBar(
             title = { Text("History", fontWeight = FontWeight.Bold) }
@@ -83,7 +93,7 @@ fun HistoryScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         TransactionCard(
                             transaction = transaction, 
                             allLabels = uiState.labels,
-                            onDelete = { viewModel.deleteTransaction(transaction.id) },
+                            onDelete = { viewModel.confirmDeleteTransaction(transaction) },
                             onEdit = { viewModel.startEditingTransaction(transaction) }
                         )
                     }
