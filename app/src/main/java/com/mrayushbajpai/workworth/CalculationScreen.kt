@@ -1,5 +1,6 @@
 package com.mrayushbajpai.workworth
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -7,7 +8,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -24,7 +25,6 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
-import java.util.UUID
 
 @Composable
 fun CalculationScreen(
@@ -35,6 +35,7 @@ fun CalculationScreen(
     val savedSalary by settingsManager.monthlySalaryFlow.collectAsState(initial = 0.0)
     val savedDays by settingsManager.daysWorkedFlow.collectAsState(initial = 0.0)
     val savedTransactions by settingsManager.transactionsFlow.collectAsState(initial = emptyList())
+    val allLabels by settingsManager.labelsFlow.collectAsState(initial = emptyList())
     val coroutineScope = rememberCoroutineScope()
 
     if (savedSalary <= 0.0 || savedDays <= 0.0) {
@@ -52,6 +53,7 @@ fun CalculationScreen(
             salary = savedSalary,
             daysWorked = savedDays,
             transactions = savedTransactions,
+            allLabels = allLabels,
             onSaveTransactions = { updatedList ->
                 coroutineScope.launch {
                     settingsManager.saveTransactions(updatedList)
@@ -130,6 +132,7 @@ fun HomeScreen(
     salary: Double,
     daysWorked: Double,
     transactions: List<Transaction>,
+    allLabels: List<Label>,
     onSaveTransactions: (List<Transaction>) -> Unit,
     onReset: () -> Unit,
     modifier: Modifier = Modifier
@@ -215,6 +218,7 @@ fun HomeScreen(
                 items(currentMonthTransactions.reversed(), key = { it.id }) { transaction ->
                     TransactionCard(
                         transaction = transaction,
+                        allLabels = allLabels,
                         onDelete = {
                             val newList = transactions.filter { it.id != transaction.id }
                             onSaveTransactions(newList)
@@ -234,8 +238,13 @@ fun InfoItem(label: String, value: String) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TransactionCard(transaction: Transaction, onDelete: () -> Unit) {
+fun TransactionCard(transaction: Transaction, allLabels: List<Label>, onDelete: () -> Unit) {
+    val labelsToDisplay = transaction.labelIds.mapNotNull { id -> 
+        allLabels.find { it.id == id } 
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -268,6 +277,29 @@ fun TransactionCard(transaction: Transaction, onDelete: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium
                 )
+                
+                if (labelsToDisplay.isNotEmpty()) {
+                    FlowRow(
+                        modifier = Modifier.padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        labelsToDisplay.forEach { label ->
+                            val labelColor = Color(label.color)
+                            AssistChip(
+                                onClick = { },
+                                label = { Text(label.name, fontSize = 10.sp) },
+                                modifier = Modifier.height(24.dp),
+                                colors = AssistChipDefaults.assistChipColors(
+                                    labelColor = labelColor
+                                ),
+                                border = BorderStroke(
+                                    width = 1.dp,
+                                    color = labelColor.copy(alpha = 0.3f)
+                                )
+                            )
+                        }
+                    }
+                }
             }
             
             Column(horizontalAlignment = Alignment.End) {
@@ -284,15 +316,17 @@ fun TransactionCard(transaction: Transaction, onDelete: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddTransactionSheet(
     hourlyRate: Double,
+    availableLabels: List<Label>,
     onDismiss: () -> Unit,
-    onAdd: (String, Double, Double) -> Unit
+    onAdd: (String, Double, Double, List<String>) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var amountInput by remember { mutableStateOf("") }
+    var selectedLabelIds by remember { mutableStateOf(setOf<String>()) }
     val sheetState = rememberModalBottomSheetState()
 
     ModalBottomSheet(
@@ -328,6 +362,32 @@ fun AddTransactionSheet(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                 shape = RoundedCornerShape(12.dp)
             )
+
+            if (availableLabels.isNotEmpty()) {
+                Text(
+                    text = "Select Labels",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    availableLabels.forEach { label ->
+                        FilterChip(
+                            selected = selectedLabelIds.contains(label.id),
+                            onClick = {
+                                selectedLabelIds = if (selectedLabelIds.contains(label.id)) {
+                                    selectedLabelIds - label.id
+                                } else {
+                                    selectedLabelIds + label.id
+                                }
+                            },
+                            label = { Text(label.name) }
+                        )
+                    }
+                }
+            }
             
             val amount = amountInput.toDoubleOrNull() ?: 0.0
             if (amount > 0) {
@@ -347,7 +407,7 @@ fun AddTransactionSheet(
                 onClick = {
                     val amountVal = amountInput.toDoubleOrNull() ?: 0.0
                     if (name.isNotBlank() && amountVal > 0) {
-                        onAdd(name, amountVal, amountVal / hourlyRate)
+                        onAdd(name, amountVal, amountVal / hourlyRate, selectedLabelIds.toList())
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),

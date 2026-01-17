@@ -1,5 +1,6 @@
 package com.mrayushbajpai.workworth
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,11 +10,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -22,6 +25,7 @@ import java.time.format.DateTimeFormatter
 fun HistoryScreen(settingsManager: SettingsManager, modifier: Modifier = Modifier) {
     val transactions by settingsManager.transactionsFlow.collectAsState(initial = emptyList())
     val monthlySummaries by settingsManager.monthlySummariesFlow.collectAsState(initial = emptyMap())
+    val allLabels by settingsManager.labelsFlow.collectAsState(initial = emptyList())
     
     val currentMonthYear = LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy"))
     val currentSalary by settingsManager.monthlySalaryFlow.collectAsState(initial = 0.0)
@@ -29,9 +33,6 @@ fun HistoryScreen(settingsManager: SettingsManager, modifier: Modifier = Modifie
     
     // Group all transactions by month
     val groupedTransactions = transactions.groupBy { it.monthYear }
-    // Sort months (this is tricky with string format "MMMM yyyy", but for now we'll just display what we have)
-    // To sort properly we'd need to parse them back to LocalDate or store a sortable key.
-    // For now, let's keep it simple.
 
     val totalLifeHours = transactions.filter { it.monthYear == currentMonthYear }.sumOf { it.timeCost }
 
@@ -87,7 +88,6 @@ fun HistoryScreen(settingsManager: SettingsManager, modifier: Modifier = Modifie
                                 fontWeight = FontWeight.Bold
                             )
                             
-                            // Get summary from historical data or fallback to current if it's the current month
                             val summary = monthlySummaries[month] ?: if (month == currentMonthYear) {
                                 MonthlySummary(currentSalary, currentDays)
                             } else null
@@ -102,9 +102,84 @@ fun HistoryScreen(settingsManager: SettingsManager, modifier: Modifier = Modifie
                         }
                     }
                     items(monthTransactions.reversed()) { transaction ->
-                        TransactionCard(transaction = transaction, onDelete = {})
+                        TransactionHistoryCard(transaction = transaction, allLabels = allLabels)
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun TransactionHistoryCard(transaction: Transaction, allLabels: List<Label>) {
+    val labelsToDisplay = transaction.labelIds.mapNotNull { id -> 
+        allLabels.find { it.id == id } 
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(48.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFFE0F2F2)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(text = "💸", fontSize = 24.sp)
+                }
+            }
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = transaction.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = "-${"%.1f".format(transaction.timeCost)} hours",
+                    color = Color(0xFF008080),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                
+                if (labelsToDisplay.isNotEmpty()) {
+                    FlowRow(
+                        modifier = Modifier.padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        labelsToDisplay.forEach { label ->
+                            val labelColor = Color(label.color)
+                            AssistChip(
+                                onClick = { },
+                                label = { Text(label.name, fontSize = 10.sp) },
+                                modifier = Modifier.height(24.dp),
+                                colors = AssistChipDefaults.assistChipColors(
+                                    labelColor = labelColor
+                                ),
+                                border = BorderStroke(
+                                    width = 1.dp,
+                                    color = labelColor.copy(alpha = 0.3f)
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+            
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "₹${"%,.2f".format(transaction.amount)}",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.bodyLarge
+                )
             }
         }
     }

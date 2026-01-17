@@ -28,6 +28,7 @@ class SettingsManager(private val context: Context) {
         val SAVED_MONTH = stringPreferencesKey("saved_month")
         val TRANSACTIONS = stringPreferencesKey("transactions")
         val MONTHLY_SUMMARIES = stringPreferencesKey("monthly_summaries")
+        val LABELS = stringPreferencesKey("labels")
     }
 
     val monthlySalaryFlow: Flow<Double> = context.dataStore.data
@@ -65,6 +66,16 @@ class SettingsManager(private val context: Context) {
             }
         }
 
+    val labelsFlow: Flow<List<Label>> = context.dataStore.data
+        .map { preferences ->
+            val jsonString = preferences[LABELS] ?: "[]"
+            try {
+                Json.decodeFromString<List<Label>>(jsonString)
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+
     suspend fun saveSettings(salary: Double, days: Double, monthYear: String) {
         context.dataStore.edit { preferences ->
             preferences[MONTHLY_SALARY] = salary
@@ -89,6 +100,12 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    suspend fun saveLabels(labels: List<Label>) {
+        context.dataStore.edit { preferences ->
+            preferences[LABELS] = Json.encodeToString(labels)
+        }
+    }
+
     suspend fun clearSettings() {
         context.dataStore.edit { preferences ->
             preferences.remove(MONTHLY_SALARY)
@@ -96,6 +113,7 @@ class SettingsManager(private val context: Context) {
             preferences.remove(SAVED_MONTH)
             preferences.remove(TRANSACTIONS)
             preferences.remove(MONTHLY_SUMMARIES)
+            preferences.remove(LABELS)
         }
     }
     

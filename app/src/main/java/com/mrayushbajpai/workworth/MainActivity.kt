@@ -5,11 +5,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
@@ -68,6 +68,7 @@ fun MainApp(settingsManager: SettingsManager) {
     val savedSalary by settingsManager.monthlySalaryFlow.collectAsState(initial = 0.0)
     val savedDays by settingsManager.daysWorkedFlow.collectAsState(initial = 0.0)
     val transactions by settingsManager.transactionsFlow.collectAsState(initial = emptyList())
+    val labels by settingsManager.labelsFlow.collectAsState(initial = emptyList())
 
     Scaffold(
         bottomBar = {
@@ -87,6 +88,22 @@ fun MainApp(settingsManager: SettingsManager) {
                             Icons.Default.Home,
                             contentDescription = "Home",
                             tint = if (currentDestination?.route == "home") Color(0xFF008080) else Color.Gray
+                        )
+                    }
+
+                    Spacer(Modifier.weight(1f))
+
+                    IconButton(onClick = {
+                        navController.navigate("labels") {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.List,
+                            contentDescription = "Labels",
+                            tint = if (currentDestination?.route == "labels") Color(0xFF008080) else Color.Gray
                         )
                     }
 
@@ -128,6 +145,9 @@ fun MainApp(settingsManager: SettingsManager) {
             composable("home") {
                 CalculationScreen(settingsManager = settingsManager)
             }
+            composable("labels") {
+                LabelsScreen(settingsManager = settingsManager)
+            }
             composable("history") {
                 HistoryScreen(settingsManager = settingsManager)
             }
@@ -137,8 +157,9 @@ fun MainApp(settingsManager: SettingsManager) {
     if (showAddSheet && savedSalary > 0 && savedDays > 0) {
         AddTransactionSheet(
             hourlyRate = savedSalary / (savedDays * 8),
+            availableLabels = labels,
             onDismiss = { showAddSheet = false },
-            onAdd = { name, amount, timeCost ->
+            onAdd = { name, amount, timeCost, selectedLabels ->
                 coroutineScope.launch {
                     val currentMonthYear = LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy"))
                     val newTransaction = Transaction(
@@ -146,7 +167,8 @@ fun MainApp(settingsManager: SettingsManager) {
                         name = name,
                         amount = amount,
                         timeCost = timeCost,
-                        monthYear = currentMonthYear
+                        monthYear = currentMonthYear,
+                        labelIds = selectedLabels
                     )
                     settingsManager.saveTransactions(transactions + newTransaction)
                     showAddSheet = false
