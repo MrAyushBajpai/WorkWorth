@@ -1,30 +1,30 @@
 package com.mrayushbajpai.workworth
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AccountBalanceWallet
-import androidx.compose.material.icons.outlined.Coffee
-import androidx.compose.material.icons.outlined.ElectricBolt
-import androidx.compose.material.icons.outlined.House
-import androidx.compose.material.icons.outlined.LocalGasStation
-import androidx.compose.material.icons.outlined.Payments
-import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.time.LocalDate
@@ -34,9 +34,13 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun HistoryScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val uiState by viewModel.uiState.collectAsState()
+    val filteredTransactions by viewModel.filteredTransactions.collectAsState()
     
-    // Group all transactions by month
-    val groupedTransactions = uiState.transactions.groupBy { it.monthYear }
+    var showFilters by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
+    
+    // Group filtered transactions by month
+    val groupedTransactions = filteredTransactions.groupBy { it.monthYear }
     
     // Get sorted list of months (descending)
     val months = groupedTransactions.keys.sortedByDescending { monthStr ->
@@ -45,77 +49,111 @@ fun HistoryScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         } catch (e: Exception) {
             LocalDate.now()
         }
-    }.toMutableList()
-
-    // Ensure current month is represented even if no transactions
-    if (!months.contains(uiState.currentMonthYear) && uiState.salary > 0) {
-        months.add(0, uiState.currentMonthYear)
     }
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("History", fontWeight = FontWeight.Bold) }
+                title = { Text("History", fontWeight = FontWeight.Bold) },
+                actions = {
+                    IconButton(onClick = { showSortMenu = true }) {
+                        Icon(Icons.Default.Sort, contentDescription = "Sort")
+                    }
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false }
+                    ) {
+                        SortOrder.values().forEach { order ->
+                            DropdownMenuItem(
+                                text = { Text(order.label) },
+                                onClick = {
+                                    viewModel.updateSortOrder(order)
+                                    showSortMenu = false
+                                },
+                                leadingIcon = {
+                                    if (uiState.sortOrder == order) {
+                                        Icon(Icons.Outlined.Check, contentDescription = null)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
             )
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
-        LazyColumn(
+        Column(
             modifier = modifier
                 .fillMaxSize()
-                .padding(padding),
-            contentPadding = PaddingValues(bottom = 16.dp)
+                .padding(padding)
         ) {
-            if (months.isEmpty()) {
-                item {
-                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "No history available yet.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            } else {
-                months.forEach { month ->
-                    val transactions = groupedTransactions[month] ?: emptyList()
-                    val summary = uiState.monthlySummaries[month]
-                    val salary = summary?.salary ?: (if (month == uiState.currentMonthYear) uiState.salary else 0.0)
-                    val daysWorked = summary?.daysWorked ?: (if (month == uiState.currentMonthYear) uiState.daysWorked else 0.0)
-                    val totalSpent = transactions.sumOf { it.amount }
+            // Search and Filter Bar
+            SearchBarAndFilters(
+                query = uiState.searchQuery,
+                onQueryChange = viewModel::updateSearchQuery,
+                showFilters = showFilters,
+                onToggleFilters = { showFilters = !showFilters },
+                labels = uiState.labels,
+                selectedLabelIds = uiState.selectedLabelIds,
+                onLabelToggle = viewModel::toggleLabelFilter,
+                minPrice = uiState.minPrice,
+                maxPrice = uiState.maxPrice,
+                onPriceRangeChange = viewModel::updatePriceRange,
+                onClearFilters = viewModel::clearFilters
+            )
 
-                    stickyHeader {
-                        MonthHeader(
-                            month = month,
-                            salary = salary,
-                            daysWorked = daysWorked,
-                            totalSpent = totalSpent
-                        )
-                    }
-
-                    items(transactions.sortedByDescending { it.timestamp }, key = { it.id }) { transaction ->
-                        val labels = transaction.labelIds.mapNotNull { id -> 
-                            uiState.labels.find { it.id == id } 
-                        }
-                        
-                        HistoryItemRow(
-                            icon = getIconForTransaction(transaction),
-                            title = transaction.name,
-                            labels = labels,
-                            amount = "-$${"%,.2f".format(transaction.amount)}",
-                            time = "-${"%.1f".format(transaction.timeCost)} Hours",
-                            isPositive = false,
-                            onClick = { viewModel.startEditingTransaction(transaction) }
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        )
-                    }
-                    
-                    // Add some space after each month's transactions
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                if (months.isEmpty()) {
                     item {
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = if (uiState.searchQuery.isNotEmpty() || uiState.selectedLabelIds.isNotEmpty()) 
+                                    "No transactions match your filters." else "No history available yet.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    months.forEach { month ->
+                        val transactions = groupedTransactions[month] ?: emptyList()
+                        val summary = uiState.monthlySummaries[month]
+                        val salary = summary?.salary ?: (if (month == uiState.currentMonthYear) uiState.salary else 0.0)
+                        val daysWorked = summary?.daysWorked ?: (if (month == uiState.currentMonthYear) uiState.daysWorked else 0.0)
+                        val totalSpent = transactions.sumOf { it.amount }
+
+                        stickyHeader {
+                            MonthHeader(
+                                month = month,
+                                salary = salary,
+                                daysWorked = daysWorked,
+                                totalSpent = totalSpent
+                            )
+                        }
+
+                        items(transactions, key = { it.id }) { transaction ->
+                            val labels = transaction.labelIds.mapNotNull { id -> 
+                                uiState.labels.find { it.id == id } 
+                            }
+                            
+                            HistoryItemRow(
+                                icon = getIconForTransaction(transaction),
+                                title = transaction.name,
+                                labels = labels,
+                                amount = "-$${"%,.2f".format(transaction.amount)}",
+                                time = "-${"%.1f".format(transaction.timeCost)} Hours",
+                                isPositive = false,
+                                onClick = { viewModel.startEditingTransaction(transaction) }
+                            )
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                thickness = 0.5.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                        }
                     }
                 }
             }
@@ -130,6 +168,117 @@ fun HistoryScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             onConfirm = { viewModel.deleteTransaction(transaction.id) },
             onDismiss = { viewModel.dismissDeleteTransaction() }
         )
+    }
+}
+
+@Composable
+fun SearchBarAndFilters(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    showFilters: Boolean,
+    onToggleFilters: () -> Unit,
+    labels: List<Label>,
+    selectedLabelIds: Set<String>,
+    onLabelToggle: (String) -> Unit,
+    minPrice: Double?,
+    maxPrice: Double?,
+    onPriceRangeChange: (Double?, Double?) -> Unit,
+    onClearFilters: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Search transactions...") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            trailingIcon = {
+                Row {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { onQueryChange("") }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                        }
+                    }
+                    IconButton(onClick = onToggleFilters) {
+                        Icon(
+                            Icons.Default.FilterList,
+                            contentDescription = "Filters",
+                            tint = if (selectedLabelIds.isNotEmpty() || minPrice != null || maxPrice != null)
+                                MaterialTheme.colorScheme.primary else LocalContentColor.current
+                        )
+                    }
+                }
+            },
+            shape = RoundedCornerShape(12.dp),
+            singleLine = true
+        )
+
+        AnimatedVisibility(visible = showFilters) {
+            Column(modifier = Modifier.padding(top = 12.dp)) {
+                Text(
+                    text = "Filter by Label",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                LazyRow(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(labels) { label ->
+                        FilterChip(
+                            selected = label.id in selectedLabelIds,
+                            onClick = { onLabelToggle(label.id) },
+                            label = { Text(label.name) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Color(label.color).copy(alpha = 0.2f),
+                                selectedLabelColor = Color(label.color)
+                            )
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Price Range",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = minPrice?.toString() ?: "",
+                        onValueChange = { onPriceRangeChange(it.toDoubleOrNull(), maxPrice) },
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Min $") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = maxPrice?.toString() ?: "",
+                        onValueChange = { onPriceRangeChange(minPrice, it.toDoubleOrNull()) },
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Max $") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true
+                    )
+                }
+                
+                TextButton(
+                    onClick = onClearFilters,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Clear All")
+                }
+            }
+        }
     }
 }
 

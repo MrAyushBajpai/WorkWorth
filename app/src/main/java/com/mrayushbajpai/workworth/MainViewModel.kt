@@ -1,5 +1,9 @@
 package com.mrayushbajpai.workworth
 
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
@@ -8,6 +12,14 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import kotlin.random.Random
+
+enum class SortOrder(val label: String) {
+    NEWEST_FIRST("Newest First"),
+    OLDEST_FIRST("Oldest First"),
+    PRICE_HIGH_LOW("Price: High to Low"),
+    PRICE_LOW_HIGH("Price: Low to High"),
+    TIME_COST_HIGHEST("Time Cost: Highest First")
+}
 
 data class WorkWorthUiState(
     val salary: Double = 0.0,
@@ -21,7 +33,14 @@ data class WorkWorthUiState(
     val editingTransaction: Transaction? = null,
     val editingLabel: Label? = null,
     val transactionToDelete: Transaction? = null,
-    val labelToDelete: Label? = null
+    val labelToDelete: Label? = null,
+    
+    // Search and Filter state
+    val searchQuery: String = "",
+    val selectedLabelIds: Set<String> = emptySet(),
+    val minPrice: Double? = null,
+    val maxPrice: Double? = null,
+    val sortOrder: SortOrder = SortOrder.NEWEST_FIRST
 ) {
     val currentMonthTransactions = transactions.filter { it.monthYear == currentMonthYear }
     val totalSpent = currentMonthTransactions.sumOf { it.amount }
@@ -39,6 +58,34 @@ class MainViewModel(private val repository: WorkworthRepository) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WorkWorthUiState())
     val uiState: StateFlow<WorkWorthUiState> = _uiState.asStateFlow()
+
+    // Using StateFlow for filtering to keep it reactive and in one pass
+    val filteredTransactions: StateFlow<List<Transaction>> = _uiState
+        .map { state ->
+            state.transactions
+                .filter { transaction ->
+                    val matchesSearch = state.searchQuery.isEmpty() || 
+                            transaction.name.contains(state.searchQuery, ignoreCase = true)
+                    
+                    val matchesLabels = state.selectedLabelIds.isEmpty() || 
+                            transaction.labelIds.any { it in state.selectedLabelIds }
+                    
+                    val matchesMinPrice = state.minPrice == null || transaction.amount >= state.minPrice
+                    val matchesMaxPrice = state.maxPrice == null || transaction.amount <= state.maxPrice
+                    
+                    matchesSearch && matchesLabels && matchesMinPrice && matchesMaxPrice
+                }
+                .let { filtered ->
+                    when (state.sortOrder) {
+                        SortOrder.NEWEST_FIRST -> filtered.sortedByDescending { it.timestamp }
+                        SortOrder.OLDEST_FIRST -> filtered.sortedBy { it.timestamp }
+                        SortOrder.PRICE_HIGH_LOW -> filtered.sortedByDescending { it.amount }
+                        SortOrder.PRICE_LOW_HIGH -> filtered.sortedBy { it.amount }
+                        SortOrder.TIME_COST_HIGHEST -> filtered.sortedByDescending { it.timeCost }
+                    }
+                }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         combine(
@@ -62,7 +109,7 @@ class MainViewModel(private val repository: WorkworthRepository) : ViewModel() {
             val today = LocalDate.now().plusMonths(offset.toLong())
             val currentMonth = today.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
             
-            WorkWorthUiState(
+            _uiState.update { it.copy(
                 salary = salary,
                 daysWorked = days,
                 transactions = transactions,
@@ -71,10 +118,42 @@ class MainViewModel(private val repository: WorkworthRepository) : ViewModel() {
                 debugMonthOffset = offset,
                 monthlySummaries = summaries,
                 isLoading = false
-            )
-        }.onEach { state ->
-            _uiState.value = state
+            ) }
         }.launchIn(viewModelScope)
+    }
+
+    // Search and Filter methods
+    fun updateSearchQuery(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
+    }
+
+    fun toggleLabelFilter(labelId: String) {
+        _uiState.update { state ->
+            val newSelection = if (labelId in state.selectedLabelIds) {
+                state.selectedLabelIds - labelId
+            } else {
+                state.selectedLabelIds + labelId
+            }
+            state.copy(selectedLabelIds = newSelection)
+        }
+    }
+
+    fun updatePriceRange(min: Double?, max: Double?) {
+        _uiState.update { it.copy(minPrice = min, maxPrice = max) }
+    }
+
+    fun updateSortOrder(order: SortOrder) {
+        _uiState.update { it.copy(sortOrder = order) }
+    }
+
+    fun clearFilters() {
+        _uiState.update { it.copy(
+            searchQuery = "",
+            selectedLabelIds = emptySet(),
+            minPrice = null,
+            maxPrice = null,
+            sortOrder = SortOrder.NEWEST_FIRST
+        ) }
     }
 
     fun updateSettings(salary: Double, daysWorked: Double) {
