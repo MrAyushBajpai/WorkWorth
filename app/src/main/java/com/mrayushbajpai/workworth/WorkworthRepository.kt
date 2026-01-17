@@ -10,6 +10,7 @@ class WorkworthRepository(private val settingsManager: SettingsManager) {
     val labels: Flow<List<Label>> = settingsManager.labelsFlow
     val salary: Flow<Double> = settingsManager.monthlySalaryFlow
     val daysWorked: Flow<Double> = settingsManager.daysWorkedFlow
+    val monthlySummaries: Flow<Map<String, MonthlySummary>> = settingsManager.monthlySummariesFlow
     val debugMonthOffset: Flow<Int> = settingsManager.debugMonthOffsetFlow
 
     suspend fun saveTransaction(transaction: Transaction) {

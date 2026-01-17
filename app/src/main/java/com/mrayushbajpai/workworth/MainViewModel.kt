@@ -14,6 +14,7 @@ data class WorkWorthUiState(
     val daysWorked: Double = 0.0,
     val transactions: List<Transaction> = emptyList(),
     val labels: List<Label> = emptyList(),
+    val monthlySummaries: Map<String, MonthlySummary> = emptyMap(),
     val currentMonthYear: String = "",
     val debugMonthOffset: Int = 0,
     val isLoading: Boolean = true,
@@ -45,18 +46,30 @@ class MainViewModel(private val repository: WorkworthRepository) : ViewModel() {
             repository.daysWorked,
             repository.transactions,
             repository.labels,
-            repository.debugMonthOffset
-        ) { salary, days, transactions, labels, offset ->
+            repository.debugMonthOffset,
+            repository.monthlySummaries
+        ) { args ->
+            val salary = args[0] as Double
+            val days = args[1] as Double
+            @Suppress("UNCHECKED_CAST")
+            val transactions = args[2] as List<Transaction>
+            @Suppress("UNCHECKED_CAST")
+            val labels = args[3] as List<Label>
+            val offset = args[4] as Int
+            @Suppress("UNCHECKED_CAST")
+            val summaries = args[5] as Map<String, MonthlySummary>
+
             val today = LocalDate.now().plusMonths(offset.toLong())
             val currentMonth = today.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
             
-            _uiState.value.copy(
+            WorkWorthUiState(
                 salary = salary,
                 daysWorked = days,
                 transactions = transactions,
                 labels = labels,
                 currentMonthYear = currentMonth,
                 debugMonthOffset = offset,
+                monthlySummaries = summaries,
                 isLoading = false
             )
         }.onEach { state ->
