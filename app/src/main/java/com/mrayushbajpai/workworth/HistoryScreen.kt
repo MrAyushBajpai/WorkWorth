@@ -83,7 +83,8 @@ fun HistoryScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         TransactionCard(
                             transaction = transaction, 
                             allLabels = uiState.labels,
-                            onDelete = { viewModel.deleteTransaction(transaction.id) }
+                            onDelete = { viewModel.deleteTransaction(transaction.id) },
+                            onEdit = { viewModel.startEditingTransaction(transaction) }
                         )
                     }
                 }

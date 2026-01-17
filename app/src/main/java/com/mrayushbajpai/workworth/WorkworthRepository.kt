@@ -16,6 +16,12 @@ class WorkworthRepository(private val settingsManager: SettingsManager) {
         settingsManager.saveTransactions(current + transaction)
     }
 
+    suspend fun updateTransaction(transaction: Transaction) {
+        val current = settingsManager.transactionsFlow.firstOrNull() ?: emptyList()
+        val updated = current.map { if (it.id == transaction.id) transaction else it }
+        settingsManager.saveTransactions(updated)
+    }
+
     suspend fun deleteTransaction(transactionId: String) {
         val current = settingsManager.transactionsFlow.firstOrNull() ?: emptyList()
         settingsManager.saveTransactions(current.filter { it.id != transactionId })
@@ -29,9 +35,48 @@ class WorkworthRepository(private val settingsManager: SettingsManager) {
         }
     }
 
+    suspend fun updateLabel(oldId: String, newLabel: Label) {
+        val currentLabels = settingsManager.labelsFlow.firstOrNull() ?: emptyList()
+        val currentTransactions = settingsManager.transactionsFlow.firstOrNull() ?: emptyList()
+
+        // Update Labels list
+        val updatedLabels = currentLabels.map { if (it.id == oldId) newLabel else it }
+
+        // If ID changed (renaming), migrate references in Transactions
+        val finalTransactions = if (oldId != newLabel.id) {
+            currentTransactions.map { transaction ->
+                if (transaction.labelIds.contains(oldId)) {
+                    transaction.copy(
+                        labelIds = transaction.labelIds.map { if (it == oldId) newLabel.id else it }
+                    )
+                } else {
+                    transaction
+                }
+            }
+        } else {
+            currentTransactions
+        }
+
+        // Save both in one DataStore transaction for atomicity
+        settingsManager.updateLabelsAndTransactions(updatedLabels, finalTransactions)
+    }
+
     suspend fun deleteLabel(labelId: String) {
-        val current = settingsManager.labelsFlow.firstOrNull() ?: emptyList()
-        settingsManager.saveLabels(current.filter { it.id != labelId })
+        val currentLabels = settingsManager.labelsFlow.firstOrNull() ?: emptyList()
+        val currentTransactions = settingsManager.transactionsFlow.firstOrNull() ?: emptyList()
+
+        val updatedLabels = currentLabels.filter { it.id != labelId }
+        
+        // Also remove references from transactions
+        val updatedTransactions = currentTransactions.map { transaction ->
+            if (transaction.labelIds.contains(labelId)) {
+                transaction.copy(labelIds = transaction.labelIds.filter { it != labelId })
+            } else {
+                transaction
+            }
+        }
+        
+        settingsManager.updateLabelsAndTransactions(updatedLabels, updatedTransactions)
     }
 
     suspend fun updateSettings(salary: Double, daysWorked: Double, monthYear: String) {

@@ -14,7 +14,9 @@ data class WorkWorthUiState(
     val transactions: List<Transaction> = emptyList(),
     val labels: List<Label> = emptyList(),
     val currentMonthYear: String = "",
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val editingTransaction: Transaction? = null,
+    val editingLabel: Label? = null
 ) {
     val currentMonthTransactions = transactions.filter { it.monthYear == currentMonthYear }
     val totalSpent = currentMonthTransactions.sumOf { it.amount }
@@ -42,7 +44,7 @@ class MainViewModel(private val repository: WorkworthRepository) : ViewModel() {
             repository.transactions,
             repository.labels
         ) { salary, days, transactions, labels ->
-            WorkWorthUiState(
+            _uiState.value.copy(
                 salary = salary,
                 daysWorked = days,
                 transactions = transactions,
@@ -56,7 +58,6 @@ class MainViewModel(private val repository: WorkworthRepository) : ViewModel() {
     }
 
     fun updateSettings(salary: Double, daysWorked: Double) {
-        // Validation Layer
         if (salary <= 0 || daysWorked <= 0) return
         
         viewModelScope.launch {
@@ -65,22 +66,41 @@ class MainViewModel(private val repository: WorkworthRepository) : ViewModel() {
         }
     }
 
-    fun addTransaction(name: String, amount: Double, selectedLabelIds: List<String>) {
+    fun startEditingTransaction(transaction: Transaction) {
+        _uiState.update { it.copy(editingTransaction = transaction) }
+    }
+
+    fun cancelEditingTransaction() {
+        _uiState.update { it.copy(editingTransaction = null) }
+    }
+
+    fun addOrUpdateTransaction(name: String, amount: Double, selectedLabelIds: List<String>) {
         val state = uiState.value
-        // Validation Layer
         if (state.salary <= 0 || state.daysWorked <= 0 || amount <= 0 || name.isBlank()) return
 
         val timeCost = FinancialEngine.calculateTimeCost(amount, state.salary, state.daysWorked)
         
         viewModelScope.launch {
-            val transaction = Transaction(
-                name = name,
-                amount = amount,
-                timeCost = timeCost,
-                monthYear = state.currentMonthYear,
-                labelIds = selectedLabelIds
-            )
-            repository.saveTransaction(transaction)
+            val editing = state.editingTransaction
+            if (editing != null) {
+                val updatedTransaction = editing.copy(
+                    name = name,
+                    amount = amount,
+                    timeCost = timeCost,
+                    labelIds = selectedLabelIds
+                )
+                repository.updateTransaction(updatedTransaction)
+                cancelEditingTransaction()
+            } else {
+                val transaction = Transaction(
+                    name = name,
+                    amount = amount,
+                    timeCost = timeCost,
+                    monthYear = state.currentMonthYear,
+                    labelIds = selectedLabelIds
+                )
+                repository.saveTransaction(transaction)
+            }
         }
     }
 
@@ -90,10 +110,27 @@ class MainViewModel(private val repository: WorkworthRepository) : ViewModel() {
         }
     }
 
-    fun addLabel(name: String, color: Int) {
+    fun startEditingLabel(label: Label) {
+        _uiState.update { it.copy(editingLabel = label) }
+    }
+
+    fun cancelEditingLabel() {
+        _uiState.update { it.copy(editingLabel = null) }
+    }
+
+    fun addOrUpdateLabel(name: String, color: Int) {
         if (name.isBlank()) return
+        val state = uiState.value
+        
         viewModelScope.launch {
-            repository.saveLabel(name, color)
+            val editing = state.editingLabel
+            if (editing != null) {
+                val newLabel = Label.create(name, color)
+                repository.updateLabel(editing.id, newLabel)
+                cancelEditingLabel()
+            } else {
+                repository.saveLabel(name, color)
+            }
         }
     }
 

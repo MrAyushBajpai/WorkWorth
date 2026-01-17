@@ -1,7 +1,9 @@
 package com.mrayushbajpai.workworth
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -48,6 +51,7 @@ fun CalculationScreen(
         HomeScreen(
             uiState = uiState,
             onDeleteTransaction = { viewModel.deleteTransaction(it) },
+            onEditTransaction = { viewModel.startEditingTransaction(it) },
             onReset = { viewModel.resetAll() },
             modifier = modifier
         )
@@ -116,6 +120,7 @@ fun SetupScreen(onSave: (Double, Double) -> Unit, modifier: Modifier = Modifier)
 fun HomeScreen(
     uiState: WorkWorthUiState,
     onDeleteTransaction: (String) -> Unit,
+    onEditTransaction: (Transaction) -> Unit,
     onReset: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -189,7 +194,8 @@ fun HomeScreen(
                     TransactionCard(
                         transaction = transaction,
                         allLabels = uiState.labels,
-                        onDelete = { onDeleteTransaction(transaction.id) }
+                        onDelete = { onDeleteTransaction(transaction.id) },
+                        onEdit = { onEditTransaction(transaction) }
                     )
                 }
             }
@@ -205,15 +211,25 @@ fun InfoItem(label: String, value: String) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
-fun TransactionCard(transaction: Transaction, allLabels: List<Label>, onDelete: () -> Unit) {
+fun TransactionCard(
+    transaction: Transaction,
+    allLabels: List<Label>,
+    onDelete: () -> Unit,
+    onEdit: () -> Unit
+) {
     val labelsToDisplay = transaction.labelIds.mapNotNull { id -> 
         allLabels.find { it.id == id } 
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { },
+                onLongClick = onEdit
+            ),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -275,8 +291,14 @@ fun TransactionCard(transaction: Transaction, allLabels: List<Label>, onDelete: 
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.bodyLarge
                 )
-                IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.LightGray, modifier = Modifier.size(18.dp))
+                Row {
+                    IconButton(onClick = onEdit, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color.LightGray, modifier = Modifier.size(18.dp))
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.LightGray, modifier = Modifier.size(18.dp))
+                    }
                 }
             }
         }
@@ -290,9 +312,10 @@ fun AddTransactionSheet(
     onDismiss: () -> Unit,
     onAdd: (String, Double, List<String>) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var amountInput by remember { mutableStateOf("") }
-    var selectedLabelIds by remember { mutableStateOf(setOf<String>()) }
+    val editing = uiState.editingTransaction
+    var name by remember(editing) { mutableStateOf(editing?.name ?: "") }
+    var amountInput by remember(editing) { mutableStateOf(editing?.amount?.toString() ?: "") }
+    var selectedLabelIds by remember(editing) { mutableStateOf(editing?.labelIds?.toSet() ?: setOf<String>()) }
     val sheetState = rememberModalBottomSheetState()
 
     ModalBottomSheet(
@@ -306,7 +329,7 @@ fun AddTransactionSheet(
                 .padding(start = 24.dp, end = 24.dp, bottom = 48.dp)
         ) {
             Text(
-                text = "Add Transaction",
+                text = if (editing != null) "Edit Transaction" else "Add Transaction",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 16.dp)
@@ -380,7 +403,11 @@ fun AddTransactionSheet(
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF008080))
             ) {
-                Text("Add Transaction", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = if (editing != null) "Update Transaction" else "Add Transaction",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

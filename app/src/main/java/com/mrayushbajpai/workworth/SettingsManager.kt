@@ -106,6 +106,13 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    suspend fun updateLabelsAndTransactions(labels: List<Label>, transactions: List<Transaction>) {
+        context.dataStore.edit { preferences ->
+            preferences[LABELS] = Json.encodeToString(labels)
+            preferences[TRANSACTIONS] = Json.encodeToString(transactions)
+        }
+    }
+
     suspend fun clearSettings() {
         context.dataStore.edit { preferences ->
             preferences.remove(MONTHLY_SALARY)

@@ -55,6 +55,13 @@ fun MainApp(viewModel: MainViewModel) {
     var showAddSheet by remember { mutableStateOf(false) }
     val uiState by viewModel.uiState.collectAsState()
 
+    // Sync sheet visibility with editing state
+    LaunchedEffect(uiState.editingTransaction) {
+        if (uiState.editingTransaction != null) {
+            showAddSheet = true
+        }
+    }
+
     Scaffold(
         bottomBar = {
             BottomAppBar(
@@ -111,7 +118,10 @@ fun MainApp(viewModel: MainViewModel) {
                 floatingActionButton = {
                     if (uiState.salary > 0 && uiState.daysWorked > 0) {
                         FloatingActionButton(
-                            onClick = { showAddSheet = true },
+                            onClick = { 
+                                viewModel.cancelEditingTransaction()
+                                showAddSheet = true 
+                            },
                             containerColor = Color(0xFF008080),
                             contentColor = Color.White,
                             elevation = FloatingActionButtonDefaults.bottomAppBarFabElevation(),
@@ -144,9 +154,12 @@ fun MainApp(viewModel: MainViewModel) {
     if (showAddSheet) {
         AddTransactionSheet(
             uiState = uiState,
-            onDismiss = { showAddSheet = false },
+            onDismiss = { 
+                showAddSheet = false
+                viewModel.cancelEditingTransaction()
+            },
             onAdd = { name, amount, selectedLabels ->
-                viewModel.addTransaction(name, amount, selectedLabels)
+                viewModel.addOrUpdateTransaction(name, amount, selectedLabels)
                 showAddSheet = false
             }
         )

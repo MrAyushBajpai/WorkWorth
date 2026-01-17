@@ -9,7 +9,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,8 +27,12 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun LabelsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val uiState by viewModel.uiState.collectAsState()
-    var newLabelName by remember { mutableStateOf("") }
-    var selectedColor by remember { mutableStateOf(Color(0xFF008080)) }
+    val editing = uiState.editingLabel
+    
+    var newLabelName by remember(editing) { mutableStateOf(editing?.name ?: "") }
+    var selectedColor by remember(editing) { 
+        mutableStateOf(if (editing != null) Color(editing.color) else Color(0xFF008080)) 
+    }
 
     val colors = listOf(
         Color(0xFF008080), Color(0xFFE91E63), Color(0xFF9C27B0),
@@ -39,13 +46,22 @@ fun LabelsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         )
 
         Column(modifier = Modifier.padding(16.dp)) {
-            OutlinedTextField(
-                value = newLabelName,
-                onValueChange = { newLabelName = it },
-                label = { Text("Label Name") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = newLabelName,
+                    onValueChange = { newLabelName = it },
+                    label = { Text("Label Name") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    trailingIcon = {
+                        if (editing != null) {
+                            IconButton(onClick = { viewModel.cancelEditingLabel() }) {
+                                Icon(Icons.Default.Close, contentDescription = "Cancel Edit")
+                            }
+                        }
+                    }
+                )
+            }
             
             Spacer(modifier = Modifier.height(12.dp))
             
@@ -78,16 +94,16 @@ fun LabelsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             Button(
                 onClick = {
                     if (newLabelName.isNotBlank()) {
-                        viewModel.addLabel(newLabelName, selectedColor.toArgb())
+                        viewModel.addOrUpdateLabel(newLabelName, selectedColor.toArgb())
                         newLabelName = ""
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = newLabelName.isNotBlank()
             ) {
-                Icon(Icons.Default.Add, contentDescription = null)
+                Icon(if (editing != null) Icons.Default.Check else Icons.Default.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Add Label")
+                Text(if (editing != null) "Update Label" else "Add Label")
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -112,7 +128,11 @@ fun LabelsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                     items(uiState.labels, key = { it.id }) { label ->
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (editing?.id == label.id) 
+                                    MaterialTheme.colorScheme.primaryContainer 
+                                else MaterialTheme.colorScheme.surfaceVariant
+                            )
                         ) {
                             Row(
                                 modifier = Modifier.padding(12.dp).fillMaxWidth(),
@@ -128,8 +148,14 @@ fun LabelsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                                     modifier = Modifier.weight(1f),
                                     fontWeight = FontWeight.Medium
                                 )
-                                IconButton(onClick = { viewModel.deleteLabel(label.id) }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(alpha = 0.6f))
+                                
+                                Row {
+                                    IconButton(onClick = { viewModel.startEditingLabel(label) }) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                    IconButton(onClick = { viewModel.deleteLabel(label.id) }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(alpha = 0.6f))
+                                    }
                                 }
                             }
                         }
