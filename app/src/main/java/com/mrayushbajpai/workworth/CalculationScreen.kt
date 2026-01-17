@@ -18,7 +18,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -28,7 +27,11 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 @Composable
-fun CalculationScreen(settingsManager: SettingsManager, modifier: Modifier = Modifier) {
+fun CalculationScreen(
+    settingsManager: SettingsManager,
+    modifier: Modifier = Modifier,
+    onShowAddTransaction: () -> Unit = {}
+) {
     val savedSalary by settingsManager.monthlySalaryFlow.collectAsState(initial = 0.0)
     val savedDays by settingsManager.daysWorkedFlow.collectAsState(initial = 0.0)
     val savedTransactions by settingsManager.transactionsFlow.collectAsState(initial = emptyList())
@@ -45,7 +48,7 @@ fun CalculationScreen(settingsManager: SettingsManager, modifier: Modifier = Mod
             modifier = modifier
         )
     } else {
-        MainScreen(
+        HomeScreen(
             salary = savedSalary,
             daysWorked = savedDays,
             transactions = savedTransactions,
@@ -123,7 +126,7 @@ fun SetupScreen(onSave: (Double, Double) -> Unit, modifier: Modifier = Modifier)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(
+fun HomeScreen(
     salary: Double,
     daysWorked: Double,
     transactions: List<Transaction>,
@@ -131,126 +134,95 @@ fun MainScreen(
     onReset: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showAddDialog by remember { mutableStateOf(false) }
-    val totalSpent = transactions.sumOf { it.amount }
+    val currentMonthYear = LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy"))
+    val currentMonthTransactions = transactions.filter { it.monthYear == currentMonthYear }
+    
+    val totalSpent = currentMonthTransactions.sumOf { it.amount }
     val remainingMoney = salary - totalSpent
     
-    // Calculate days remaining based on money
     val moneyDaysLeft = if (salary > 0) (remainingMoney / salary) * daysWorked else 0.0
     
-    // Calendar days remaining (for info only)
     val today = LocalDate.now()
     val lastDayOfMonth = YearMonth.from(today).atEndOfMonth()
     val calendarDaysLeft = java.time.temporal.ChronoUnit.DAYS.between(today, lastDayOfMonth).toInt()
 
-    Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showAddDialog = true },
-                containerColor = Color(0xFF008080),
-                contentColor = Color.White
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Transaction")
-            }
-        },
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("WorkWorth", fontWeight = FontWeight.Bold) },
-                actions = {
-                    IconButton(onClick = onReset) {
-                        Icon(Icons.Default.Settings, contentDescription = "Reset Settings")
-                    }
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+    ) {
+        CenterAlignedTopAppBar(
+            title = { Text("WorkWorth", fontWeight = FontWeight.Bold) },
+            actions = {
+                IconButton(onClick = onReset) {
+                    Icon(Icons.Default.Settings, contentDescription = "Reset Settings")
                 }
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-        ) {
-            // Hero Section (Teal Gradient Box)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(Color(0xFF008080), Color(0xFF00B2B2))
-                        ),
-                        shape = RoundedCornerShape(24.dp)
-                    )
-                    .padding(24.dp)
-            ) {
-                Column {
-                    Text(
-                        text = "${"%.1f".format(moneyDaysLeft)} Days Remaining",
-                        color = Color.White,
-                        style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
-                    Text(
-                        text = "Balance: $${"%,.2f".format(remainingMoney)}",
-                        color = Color.White.copy(alpha = 0.9f),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        InfoItem(label = "Monthly Salary", value = "$${"%,.0f".format(salary)}")
-                        InfoItem(label = "Calendar Left", value = "$calendarDaysLeft Days")
-                    }
-                }
-            }
-
-            Text(
-                text = "Recent Transactions",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                fontWeight = FontWeight.Bold
-            )
-
-            if (transactions.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No transactions yet. Tap + to add one!", color = Color.Gray)
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(transactions.reversed(), key = { it.id }) { transaction ->
-                        TransactionCard(
-                            transaction = transaction,
-                            onDelete = {
-                                val newList = transactions.filter { it.id != transaction.id }
-                                onSaveTransactions(newList)
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    if (showAddDialog) {
-        AddTransactionDialog(
-            hourlyRate = salary / (daysWorked * 8),
-            onDismiss = { showAddDialog = false },
-            onAdd = { name, amount, timeCost ->
-                val newTransaction = Transaction(
-                    id = UUID.randomUUID().toString(),
-                    name = name,
-                    amount = amount,
-                    timeCost = timeCost
-                )
-                onSaveTransactions(transactions + newTransaction)
-                showAddDialog = false
             }
         )
+
+        // Hero Section
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFF008080), Color(0xFF00B2B2))
+                    ),
+                    shape = RoundedCornerShape(24.dp)
+                )
+                .padding(24.dp)
+        ) {
+            Column {
+                Text(
+                    text = "${"%.1f".format(moneyDaysLeft)} Days Remaining",
+                    color = Color.White,
+                    style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+                Text(
+                    text = "Balance: $${"%,.2f".format(remainingMoney)}",
+                    color = Color.White.copy(alpha = 0.9f),
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    InfoItem(label = "Monthly Salary", value = "$${"%,.0f".format(salary)}")
+                    InfoItem(label = "Calendar Left", value = "$calendarDaysLeft Days")
+                }
+            }
+        }
+
+        Text(
+            text = "Recent Transactions",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            fontWeight = FontWeight.Bold
+        )
+
+        if (currentMonthTransactions.isEmpty()) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text("No transactions yet. Tap + to add one!", color = Color.Gray)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(currentMonthTransactions.reversed(), key = { it.id }) { transaction ->
+                    TransactionCard(
+                        transaction = transaction,
+                        onDelete = {
+                            val newList = transactions.filter { it.id != transaction.id }
+                            onSaveTransactions(newList)
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -276,7 +248,6 @@ fun TransactionCard(transaction: Transaction, onDelete: () -> Unit) {
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Icon Placeholder
             Surface(
                 modifier = Modifier.size(48.dp),
                 shape = RoundedCornerShape(12.dp),
@@ -313,63 +284,78 @@ fun TransactionCard(transaction: Transaction, onDelete: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddTransactionDialog(
+fun AddTransactionSheet(
     hourlyRate: Double,
     onDismiss: () -> Unit,
     onAdd: (String, Double, Double) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var amountInput by remember { mutableStateOf("") }
+    val sheetState = rememberModalBottomSheetState()
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Add Transaction") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Expense Name") },
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+        sheetState = sheetState,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 24.dp, bottom = 48.dp)
+        ) {
+            Text(
+                text = "Add Transaction",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Expense Name") },
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                shape = RoundedCornerShape(12.dp)
+            )
+            
+            OutlinedTextField(
+                value = amountInput,
+                onValueChange = { amountInput = it.filter { char -> char.isDigit() || char == '.' } },
+                label = { Text("Amount ($)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                shape = RoundedCornerShape(12.dp)
+            )
+            
+            val amount = amountInput.toDoubleOrNull() ?: 0.0
+            if (amount > 0) {
+                val timeCost = amount / hourlyRate
+                Text(
+                    text = "Cost in time: ${"%.1f".format(timeCost)} hours",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF008080),
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(bottom = 24.dp)
                 )
-                OutlinedTextField(
-                    value = amountInput,
-                    onValueChange = { amountInput = it.filter { char -> char.isDigit() || char == '.' } },
-                    label = { Text("Amount ($)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                
-                val amount = amountInput.toDoubleOrNull() ?: 0.0
-                if (amount > 0) {
-                    val timeCost = amount / hourlyRate
-                    Text(
-                        text = "Cost in time: ${"%.1f".format(timeCost)} hours",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF008080),
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
+            } else {
+                 Spacer(modifier = Modifier.height(24.dp))
             }
-        },
-        confirmButton = {
+
             Button(
                 onClick = {
-                    val amount = amountInput.toDoubleOrNull() ?: 0.0
-                    if (name.isNotBlank() && amount > 0) {
-                        onAdd(name, amount, amount / hourlyRate)
+                    val amountVal = amountInput.toDoubleOrNull() ?: 0.0
+                    if (name.isNotBlank() && amountVal > 0) {
+                        onAdd(name, amountVal, amountVal / hourlyRate)
                     }
                 },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF008080))
             ) {
-                Text("Add")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Add Transaction", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         }
-    )
+    }
 }
