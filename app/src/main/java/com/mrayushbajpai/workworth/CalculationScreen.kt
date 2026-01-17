@@ -16,54 +16,39 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
 import java.time.LocalDate
-import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
 @Composable
 fun CalculationScreen(
-    settingsManager: SettingsManager,
-    modifier: Modifier = Modifier,
-    onShowAddTransaction: () -> Unit = {}
+    viewModel: MainViewModel,
+    modifier: Modifier = Modifier
 ) {
-    val savedSalary by settingsManager.monthlySalaryFlow.collectAsState(initial = 0.0)
-    val savedDays by settingsManager.daysWorkedFlow.collectAsState(initial = 0.0)
-    val savedTransactions by settingsManager.transactionsFlow.collectAsState(initial = emptyList())
-    val allLabels by settingsManager.labelsFlow.collectAsState(initial = emptyList())
-    val coroutineScope = rememberCoroutineScope()
+    val uiState by viewModel.uiState.collectAsState()
 
-    if (savedSalary <= 0.0 || savedDays <= 0.0) {
+    if (uiState.isLoading) {
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
+    if (uiState.salary <= 0.0 || uiState.daysWorked <= 0.0) {
         SetupScreen(
             onSave = { salary, days ->
-                coroutineScope.launch {
-                    val currentMonthYear = LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy"))
-                    settingsManager.saveSettings(salary, days, currentMonthYear)
-                }
+                viewModel.updateSettings(salary, days)
             },
             modifier = modifier
         )
     } else {
         HomeScreen(
-            salary = savedSalary,
-            daysWorked = savedDays,
-            transactions = savedTransactions,
-            allLabels = allLabels,
-            onSaveTransactions = { updatedList ->
-                coroutineScope.launch {
-                    settingsManager.saveTransactions(updatedList)
-                }
-            },
-            onReset = {
-                coroutineScope.launch {
-                    settingsManager.clearSettings()
-                }
-            },
+            uiState = uiState,
+            onDeleteTransaction = { viewModel.deleteTransaction(it) },
+            onReset = { viewModel.resetAll() },
             modifier = modifier
         )
     }
@@ -129,26 +114,11 @@ fun SetupScreen(onSave: (Double, Double) -> Unit, modifier: Modifier = Modifier)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    salary: Double,
-    daysWorked: Double,
-    transactions: List<Transaction>,
-    allLabels: List<Label>,
-    onSaveTransactions: (List<Transaction>) -> Unit,
+    uiState: WorkWorthUiState,
+    onDeleteTransaction: (String) -> Unit,
     onReset: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val currentMonthYear = LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy"))
-    val currentMonthTransactions = transactions.filter { it.monthYear == currentMonthYear }
-    
-    val totalSpent = currentMonthTransactions.sumOf { it.amount }
-    val remainingMoney = salary - totalSpent
-    
-    val moneyDaysLeft = if (salary > 0) (remainingMoney / salary) * daysWorked else 0.0
-    
-    val today = LocalDate.now()
-    val lastDayOfMonth = YearMonth.from(today).atEndOfMonth()
-    val calendarDaysLeft = java.time.temporal.ChronoUnit.DAYS.between(today, lastDayOfMonth).toInt()
-
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -177,13 +147,13 @@ fun HomeScreen(
         ) {
             Column {
                 Text(
-                    text = "${"%.1f".format(moneyDaysLeft)} Days Remaining",
+                    text = "${"%.1f".format(uiState.moneyDaysLeft)} Days Remaining",
                     color = Color.White,
                     style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
                 Text(
-                    text = "Balance: $${"%,.2f".format(remainingMoney)}",
+                    text = "Balance: $${"%,.2f".format(uiState.remainingMoney)}",
                     color = Color.White.copy(alpha = 0.9f),
                     style = MaterialTheme.typography.titleMedium
                 )
@@ -192,8 +162,8 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    InfoItem(label = "Monthly Salary", value = "$${"%,.0f".format(salary)}")
-                    InfoItem(label = "Calendar Left", value = "$calendarDaysLeft Days")
+                    InfoItem(label = "Monthly Salary", value = "$${"%,.0f".format(uiState.salary)}")
+                    InfoItem(label = "Calendar Left", value = "${uiState.calendarDaysLeft} Days")
                 }
             }
         }
@@ -205,7 +175,7 @@ fun HomeScreen(
             fontWeight = FontWeight.Bold
         )
 
-        if (currentMonthTransactions.isEmpty()) {
+        if (uiState.currentMonthTransactions.isEmpty()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text("No transactions yet. Tap + to add one!", color = Color.Gray)
             }
@@ -215,14 +185,11 @@ fun HomeScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(currentMonthTransactions.reversed(), key = { it.id }) { transaction ->
+                items(uiState.currentMonthTransactions.sortedByDescending { it.timestamp }, key = { it.id }) { transaction ->
                     TransactionCard(
                         transaction = transaction,
-                        allLabels = allLabels,
-                        onDelete = {
-                            val newList = transactions.filter { it.id != transaction.id }
-                            onSaveTransactions(newList)
-                        }
+                        allLabels = uiState.labels,
+                        onDelete = { onDeleteTransaction(transaction.id) }
                     )
                 }
             }
@@ -319,10 +286,9 @@ fun TransactionCard(transaction: Transaction, allLabels: List<Label>, onDelete: 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddTransactionSheet(
-    hourlyRate: Double,
-    availableLabels: List<Label>,
+    uiState: WorkWorthUiState,
     onDismiss: () -> Unit,
-    onAdd: (String, Double, Double, List<String>) -> Unit
+    onAdd: (String, Double, List<String>) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var amountInput by remember { mutableStateOf("") }
@@ -363,7 +329,7 @@ fun AddTransactionSheet(
                 shape = RoundedCornerShape(12.dp)
             )
 
-            if (availableLabels.isNotEmpty()) {
+            if (uiState.labels.isNotEmpty()) {
                 Text(
                     text = "Select Labels",
                     style = MaterialTheme.typography.titleSmall,
@@ -373,7 +339,7 @@ fun AddTransactionSheet(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    availableLabels.forEach { label ->
+                    uiState.labels.forEach { label ->
                         FilterChip(
                             selected = selectedLabelIds.contains(label.id),
                             onClick = {
@@ -390,8 +356,8 @@ fun AddTransactionSheet(
             }
             
             val amount = amountInput.toDoubleOrNull() ?: 0.0
-            if (amount > 0) {
-                val timeCost = amount / hourlyRate
+            if (amount > 0 && uiState.salary > 0 && uiState.daysWorked > 0) {
+                val timeCost = FinancialEngine.calculateTimeCost(amount, uiState.salary, uiState.daysWorked)
                 Text(
                     text = "Cost in time: ${"%.1f".format(timeCost)} hours",
                     style = MaterialTheme.typography.bodyMedium,
@@ -407,7 +373,7 @@ fun AddTransactionSheet(
                 onClick = {
                     val amountVal = amountInput.toDoubleOrNull() ?: 0.0
                     if (name.isNotBlank() && amountVal > 0) {
-                        onAdd(name, amountVal, amountVal / hourlyRate, selectedLabelIds.toList())
+                        onAdd(name, amountVal, selectedLabelIds.toList())
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),

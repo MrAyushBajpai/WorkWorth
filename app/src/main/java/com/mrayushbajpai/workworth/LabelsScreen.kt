@@ -19,15 +19,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LabelsScreen(settingsManager: SettingsManager, modifier: Modifier = Modifier) {
-    val labels by settingsManager.labelsFlow.collectAsState(initial = emptyList())
+fun LabelsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
+    val uiState by viewModel.uiState.collectAsState()
     var newLabelName by remember { mutableStateOf("") }
     var selectedColor by remember { mutableStateOf(Color(0xFF008080)) }
-    val coroutineScope = rememberCoroutineScope()
 
     val colors = listOf(
         Color(0xFF008080), Color(0xFFE91E63), Color(0xFF9C27B0),
@@ -80,11 +78,8 @@ fun LabelsScreen(settingsManager: SettingsManager, modifier: Modifier = Modifier
             Button(
                 onClick = {
                     if (newLabelName.isNotBlank()) {
-                        coroutineScope.launch {
-                            val newLabel = Label(name = newLabelName, color = selectedColor.toArgb())
-                            settingsManager.saveLabels(labels + newLabel)
-                            newLabelName = ""
-                        }
+                        viewModel.addLabel(newLabelName, selectedColor.toArgb())
+                        newLabelName = ""
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -105,7 +100,7 @@ fun LabelsScreen(settingsManager: SettingsManager, modifier: Modifier = Modifier
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            if (labels.isEmpty()) {
+            if (uiState.labels.isEmpty()) {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text("No labels created yet.", color = Color.Gray)
                 }
@@ -114,10 +109,7 @@ fun LabelsScreen(settingsManager: SettingsManager, modifier: Modifier = Modifier
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(labels, key = { it.id }) { label ->
-                        var isEditing by remember { mutableStateOf(false) }
-                        var editedName by remember { mutableStateOf(label.name) }
-                        
+                    items(uiState.labels, key = { it.id }) { label ->
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -131,37 +123,13 @@ fun LabelsScreen(settingsManager: SettingsManager, modifier: Modifier = Modifier
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 
-                                if (isEditing) {
-                                    OutlinedTextField(
-                                        value = editedName,
-                                        onValueChange = { editedName = it },
-                                        modifier = Modifier.weight(1f),
-                                        singleLine = true
-                                    )
-                                    IconButton(onClick = {
-                                        coroutineScope.launch {
-                                            val updatedLabels = labels.map { 
-                                                if (it.id == label.id) it.copy(name = editedName) else it 
-                                            }
-                                            settingsManager.saveLabels(updatedLabels)
-                                            isEditing = false
-                                        }
-                                    }) {
-                                        Text("Save", color = Color(0xFF008080), fontWeight = FontWeight.Bold)
-                                    }
-                                } else {
-                                    Text(
-                                        text = label.name, 
-                                        modifier = Modifier.weight(1f).clickable { isEditing = true },
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    IconButton(onClick = {
-                                        coroutineScope.launch {
-                                            settingsManager.saveLabels(labels.filter { it.id != label.id })
-                                        }
-                                    }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(alpha = 0.6f))
-                                    }
+                                Text(
+                                    text = label.name, 
+                                    modifier = Modifier.weight(1f),
+                                    fontWeight = FontWeight.Medium
+                                )
+                                IconButton(onClick = { viewModel.deleteLabel(label.id) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(alpha = 0.6f))
                                 }
                             }
                         }
