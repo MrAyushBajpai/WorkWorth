@@ -10,10 +10,15 @@ class WorkworthRepository(private val settingsManager: SettingsManager) {
     val labels: Flow<List<Label>> = settingsManager.labelsFlow
     val salary: Flow<Double> = settingsManager.monthlySalaryFlow
     val daysWorked: Flow<Double> = settingsManager.daysWorkedFlow
+    val debugMonthOffset: Flow<Int> = settingsManager.debugMonthOffsetFlow
 
     suspend fun saveTransaction(transaction: Transaction) {
         val current = settingsManager.transactionsFlow.firstOrNull() ?: emptyList()
         settingsManager.saveTransactions(current + transaction)
+    }
+
+    suspend fun saveTransactions(transactions: List<Transaction>) {
+        settingsManager.saveTransactions(transactions)
     }
 
     suspend fun updateTransaction(transaction: Transaction) {
@@ -83,8 +88,21 @@ class WorkworthRepository(private val settingsManager: SettingsManager) {
         settingsManager.saveSettings(salary, daysWorked, monthYear)
     }
 
-    suspend fun clearAll() {
+    suspend fun clearAllData() {
         settingsManager.clearSettings()
+    }
+
+    suspend fun resetCurrentMonth() {
+        settingsManager.clearCurrentMonthSettings()
+    }
+
+    suspend fun updateDebugMonthOffset(offset: Int) {
+        settingsManager.updateDebugMonthOffset(offset)
+    }
+
+    suspend fun saveSeedData(transactions: List<Transaction>, summaries: Map<String, MonthlySummary>) {
+        settingsManager.saveTransactions(transactions)
+        settingsManager.saveMonthlySummaries(summaries)
     }
 
     // Single source of truth for transaction labels mapping

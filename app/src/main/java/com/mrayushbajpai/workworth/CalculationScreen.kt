@@ -12,6 +12,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -63,7 +64,10 @@ fun CalculationScreen(
             uiState = uiState,
             onDeleteTransaction = { viewModel.confirmDeleteTransaction(it) },
             onEditTransaction = { viewModel.startEditingTransaction(it) },
-            onReset = { viewModel.resetAll() },
+            onResetCurrentMonth = { viewModel.resetCurrentMonth() },
+            onSeedMockData = { viewModel.seedMockData() },
+            onClearAllData = { viewModel.clearAllData() },
+            onFastForward = { viewModel.fastForwardTime() },
             onSeeAll = onSeeAll,
             modifier = modifier
         )
@@ -133,10 +137,15 @@ fun HomeScreen(
     uiState: WorkWorthUiState,
     onDeleteTransaction: (Transaction) -> Unit,
     onEditTransaction: (Transaction) -> Unit,
-    onReset: () -> Unit,
+    onResetCurrentMonth: () -> Unit,
+    onSeedMockData: () -> Unit,
+    onClearAllData: () -> Unit,
+    onFastForward: () -> Unit,
     onSeeAll: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -144,8 +153,44 @@ fun HomeScreen(
         CenterAlignedTopAppBar(
             title = { Text("WorkWorth", fontWeight = FontWeight.Bold) },
             actions = {
-                IconButton(onClick = onReset) {
-                    Icon(Icons.Default.Settings, contentDescription = "Reset Settings")
+                Box {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings & Debug")
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Reset Current Month") },
+                            onClick = {
+                                onResetCurrentMonth()
+                                showMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Seed Mock Data (x50)") },
+                            onClick = {
+                                onSeedMockData()
+                                showMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Fast-Forward Time (Debug)") },
+                            onClick = {
+                                onFastForward()
+                                showMenu = false
+                            }
+                        )
+                        Divider()
+                        DropdownMenuItem(
+                            text = { Text("Clear All Data", color = Color.Red) },
+                            onClick = {
+                                onClearAllData()
+                                showMenu = false
+                            }
+                        )
+                    }
                 }
             }
         )

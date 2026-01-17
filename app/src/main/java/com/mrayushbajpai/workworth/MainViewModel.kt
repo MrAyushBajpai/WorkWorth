@@ -7,6 +7,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import kotlin.random.Random
 
 data class WorkWorthUiState(
     val salary: Double = 0.0,
@@ -14,6 +15,7 @@ data class WorkWorthUiState(
     val transactions: List<Transaction> = emptyList(),
     val labels: List<Label> = emptyList(),
     val currentMonthYear: String = "",
+    val debugMonthOffset: Int = 0,
     val isLoading: Boolean = true,
     val editingTransaction: Transaction? = null,
     val editingLabel: Label? = null,
@@ -26,7 +28,7 @@ data class WorkWorthUiState(
     val moneyDaysLeft = FinancialEngine.calculateRemainingDays(remainingMoney, salary, daysWorked)
     
     val calendarDaysLeft: Int by lazy {
-        val today = LocalDate.now()
+        val today = LocalDate.now().plusMonths(debugMonthOffset.toLong())
         val lastDayOfMonth = YearMonth.from(today).atEndOfMonth()
         java.time.temporal.ChronoUnit.DAYS.between(today, lastDayOfMonth).toInt()
     }
@@ -38,20 +40,23 @@ class MainViewModel(private val repository: WorkworthRepository) : ViewModel() {
     val uiState: StateFlow<WorkWorthUiState> = _uiState.asStateFlow()
 
     init {
-        val currentMonth = LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy"))
-        
         combine(
             repository.salary,
             repository.daysWorked,
             repository.transactions,
-            repository.labels
-        ) { salary, days, transactions, labels ->
+            repository.labels,
+            repository.debugMonthOffset
+        ) { salary, days, transactions, labels, offset ->
+            val today = LocalDate.now().plusMonths(offset.toLong())
+            val currentMonth = today.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
+            
             _uiState.value.copy(
                 salary = salary,
                 daysWorked = days,
                 transactions = transactions,
                 labels = labels,
                 currentMonthYear = currentMonth,
+                debugMonthOffset = offset,
                 isLoading = false
             )
         }.onEach { state ->
@@ -63,7 +68,8 @@ class MainViewModel(private val repository: WorkworthRepository) : ViewModel() {
         if (salary <= 0 || daysWorked <= 0) return
         
         viewModelScope.launch {
-            val currentMonth = LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy"))
+            val today = LocalDate.now().plusMonths(uiState.value.debugMonthOffset.toLong())
+            val currentMonth = today.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
             repository.updateSettings(salary, daysWorked, currentMonth)
         }
     }
@@ -131,10 +137,9 @@ class MainViewModel(private val repository: WorkworthRepository) : ViewModel() {
 
     fun addOrUpdateLabel(name: String, color: Int) {
         if (name.isBlank()) return
-        val state = uiState.value
         
         viewModelScope.launch {
-            val editing = state.editingLabel
+            val editing = uiState.value.editingLabel
             if (editing != null) {
                 val newLabel = Label.create(name, color)
                 repository.updateLabel(editing.id, newLabel)
@@ -160,9 +165,78 @@ class MainViewModel(private val repository: WorkworthRepository) : ViewModel() {
         }
     }
 
-    fun resetAll() {
+    fun resetCurrentMonth() {
         viewModelScope.launch {
-            repository.clearAll()
+            repository.resetCurrentMonth()
+        }
+    }
+
+    fun clearAllData() {
+        viewModelScope.launch {
+            repository.clearAllData()
+        }
+    }
+
+    fun fastForwardTime() {
+        viewModelScope.launch {
+            repository.updateDebugMonthOffset(uiState.value.debugMonthOffset + 1)
+        }
+    }
+
+    fun seedMockData() {
+        viewModelScope.launch {
+            val mockLabels = listOf(
+                Label.create("Groceries", 0xFF4CAF50.toInt()),
+                Label.create("Rent", 0xFF2196F3.toInt()),
+                Label.create("Tech", 0xFF9C27B0.toInt()),
+                Label.create("Dining", 0xFFFF9800.toInt()),
+                Label.create("Travel", 0xFF00BCD4.toInt()),
+                Label.create("Health", 0xFFE91E63.toInt()),
+                Label.create("Subscription", 0xFF607D8B.toInt())
+            )
+            
+            // Save labels first
+            mockLabels.forEach { repository.saveLabel(it.name, it.color) }
+            
+            val labelIds = mockLabels.map { it.id }
+            val transactions = mutableListOf<Transaction>()
+            val summaries = mutableMapOf<String, MonthlySummary>()
+            val formatter = DateTimeFormatter.ofPattern("MMMM yyyy")
+            val today = LocalDate.now().plusMonths(uiState.value.debugMonthOffset.toLong())
+            
+            val mockSalary = 6000.0 // Higher salary to ensure positive balance
+            val mockDaysWorked = 22.0
+            
+            // Generate data for current month + last 2 months
+            for (i in 0..2) {
+                val date = today.minusMonths(i.toLong())
+                val monthYear = date.format(formatter)
+                
+                // Add summary for this month
+                summaries[monthYear] = MonthlySummary(mockSalary, mockDaysWorked)
+                
+                // Add ~16 transactions per month
+                repeat(16) {
+                    val amount = Random.nextDouble(20.0, 300.0)
+                    val timeCost = FinancialEngine.calculateTimeCost(amount, mockSalary, mockDaysWorked)
+                    
+                    transactions.add(
+                        Transaction(
+                            name = listOf("Coffee", "Netflix", "Amazon", "Groceries", "Gas", "Dinner", "Gym", "Internet", "Water Bill", "Electricity").random(),
+                            amount = amount,
+                            timeCost = timeCost,
+                            monthYear = monthYear,
+                            labelIds = listOf(labelIds.random())
+                        )
+                    )
+                }
+            }
+            
+            // Save everything to repository
+            repository.saveSeedData(uiState.value.transactions + transactions, summaries)
+            
+            // Also update the active current month settings
+            repository.updateSettings(mockSalary, mockDaysWorked, today.format(formatter))
         }
     }
 }
