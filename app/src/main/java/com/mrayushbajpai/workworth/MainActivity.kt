@@ -38,9 +38,18 @@ class MainActivity : ComponentActivity() {
 
         val settingsManager = SettingsManager(this)
 
-        // Month change check logic is still relevant but we now support history.
-        // We might want to keep current settings but start fresh for the NEW month in the UI.
-        // For now, let's keep the core logic and ensure transitions work.
+        // Month change check logic: if we move to a new month, carry over settings to history
+        lifecycleScope.launch {
+            val savedMonth = settingsManager.savedMonthFlow.first()
+            val currentMonth = LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy"))
+            if (savedMonth != null && savedMonth != currentMonth) {
+                val salary = settingsManager.monthlySalaryFlow.first()
+                val days = settingsManager.daysWorkedFlow.first()
+                if (salary > 0 && days > 0) {
+                    settingsManager.saveSettings(salary, days, currentMonth)
+                }
+            }
+        }
 
         setContent {
             WorkWorthTheme {

@@ -9,10 +9,17 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+
+@Serializable
+data class MonthlySummary(
+    val salary: Double,
+    val daysWorked: Double
+)
 
 class SettingsManager(private val context: Context) {
     companion object {
@@ -20,6 +27,7 @@ class SettingsManager(private val context: Context) {
         val DAYS_WORKED = doublePreferencesKey("days_worked")
         val SAVED_MONTH = stringPreferencesKey("saved_month")
         val TRANSACTIONS = stringPreferencesKey("transactions")
+        val MONTHLY_SUMMARIES = stringPreferencesKey("monthly_summaries")
     }
 
     val monthlySalaryFlow: Flow<Double> = context.dataStore.data
@@ -47,11 +55,31 @@ class SettingsManager(private val context: Context) {
             }
         }
 
+    val monthlySummariesFlow: Flow<Map<String, MonthlySummary>> = context.dataStore.data
+        .map { preferences ->
+            val jsonString = preferences[MONTHLY_SUMMARIES] ?: "{}"
+            try {
+                Json.decodeFromString<Map<String, MonthlySummary>>(jsonString)
+            } catch (e: Exception) {
+                emptyMap()
+            }
+        }
+
     suspend fun saveSettings(salary: Double, days: Double, monthYear: String) {
         context.dataStore.edit { preferences ->
             preferences[MONTHLY_SALARY] = salary
             preferences[DAYS_WORKED] = days
             preferences[SAVED_MONTH] = monthYear
+
+            // Update monthly history records
+            val currentSummariesJson = preferences[MONTHLY_SUMMARIES] ?: "{}"
+            val currentSummaries = try {
+                Json.decodeFromString<Map<String, MonthlySummary>>(currentSummariesJson).toMutableMap()
+            } catch (e: Exception) {
+                mutableMapOf()
+            }
+            currentSummaries[monthYear] = MonthlySummary(salary, days)
+            preferences[MONTHLY_SUMMARIES] = Json.encodeToString(currentSummaries)
         }
     }
 
@@ -67,6 +95,7 @@ class SettingsManager(private val context: Context) {
             preferences.remove(DAYS_WORKED)
             preferences.remove(SAVED_MONTH)
             preferences.remove(TRANSACTIONS)
+            preferences.remove(MONTHLY_SUMMARIES)
         }
     }
     
